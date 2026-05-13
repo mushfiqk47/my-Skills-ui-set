@@ -1,0 +1,64 @@
+/* Design Tokens - CSS Variables */
+
+:root {
+  /* Primitives */
+  --color-blue-50: #EFF6FF;
+  --color-blue-100: #DBEAFE;
+  --color-blue-500: #3B82F6;
+  --color-blue-600: #2563EB;
+  --color-blue-900: #1E3A8A;
+
+  --color-gray-50: #F9FAFB;
+  --color-gray-100: #F3F4F6;
+  --color-gray-200: #E5E7EB;
+  --color-gray-300: #D1D5DB;
+  --color-gray-400: #9CA3AF;
+  --color-gray-500: #6B7280;
+  --color-gray-600: #4B5563;
+  --color-gray-700: #374151;
+  --color-gray-800: #1F2937;
+  --color-gray-900: #111827;
+
+  /* Semantic */
+  --color-primary: var(--color-blue-600);
+  --color-primary-hover: var(--color-blue-700);
+  --color-text-primary: var(--color-gray-900);
+  --color-text-secondary: var(--color-gray-600);
+  --color-text-muted: var(--color-gray-400);
+  --color-bg-primary: #FFFFFF;
+  --color-bg-secondary: var(--color-gray-50);
+  --color-bg-tertiary: var(--color-gray-100);
+  --color-border-light: var(--color-gray-200);
+  --color-border-medium: var(--color-gray-300);
+  --color-border-focus: var(--color-blue-500);
+
+  /* Component */
+  --button-bg: var(--color-primary);
+  --button-bg-hover: var(--color-primary-hover);
+  --button-text: #FFFFFF;
+  --button-padding: 8px 16px;
+  --button-radius: 6px;
+
+  --card-bg: var(--color-bg-primary);
+  --card-border: 1px solid var(--color-border-light);
+  --card-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+  --card-radius: 8px;
+  --card-padding: 24px;
+
+  /* Slide specific */
+  --slide-bg: var(--color-bg-primary);
+  --slide-text: var(--color-text-primary);
+  --slide-accent: var(--color-primary);
+  --typography-font-heading: 'Inter', system-ui, sans-serif;
+  --typography-font-body: 'Inter', system-ui, sans-serif;
+}
+
+.dark {
+  --color-bg-primary: var(--color-gray-900);
+  --color-bg-secondary: var(--color-gray-800);
+  --color-text-primary: var(--color-gray-50);
+  --color-text-secondary: var(--color-gray-300);
+  --color-border-light: var(--color-gray-700);
+  --slide-bg: var(--color-gray-900);
+  --slide-text: var(--color-gray-50);
+}

@@ -1,0 +1,3 @@
+strategy_name,emotion_arc,sparkline_beats
+investor_pitch,frustration->hope->excitement,3
+sales_deck,problem->solution->value,3
