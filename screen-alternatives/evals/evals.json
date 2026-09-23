@@ -1,0 +1,47 @@
+{
+  "skill_name": "screen-alternatives",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "I have selected our main SaaS analytics overview screen in Figma (Frame: 'Analytics - Overview', 1440x900). Can you critique the screen and give me structural alternatives? Make sure not to change our colors or font styles, just test different ways to structure it.",
+      "expected_output": "A complete Screen Alternatives evaluation containing a 1-sentence screen job definition, 4-pass stress test findings (maximum 8 concrete items), exactly two structural alternatives (Alt A: Structural Rearrangement, Alt B: First-Principles Rebuild) positioned beside the untouched original with 200px gaps and hypothesis captions, content and style parity preserved, and the structured final comparison report with an empirical 'How to decide' criterion.",
+      "expectations": [
+        "Identifies the screen job in exactly one sentence",
+        "Executes stress-test passes covering hierarchy, states, logic, and conventions",
+        "Produces no more than 8 concrete, ranked findings with element, defect, and user impact",
+        "Proposes exactly two alternatives (Alt A and Alt B) with distinct hypotheses",
+        "Enforces strict content parity (same content items, real copy, no lorem ipsum)",
+        "Enforces strict style parity (same typography, color palette, radius, and elevation tokens)",
+        "Specifies exact Figma placement coordinates: Alt A at Original.x + Original.width + 200px, Alt B at Alt_A.x + Alt_A.width + 200px",
+        "Places hypothesis captions directly above Alt A and Alt B frames",
+        "Documents 1-3 considered but rejected directions with clear rationale",
+        "Concludes with a single-sentence empirical 'How to decide' testing criterion"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Here's our mobile e-commerce cart review screen (Frame: 'Cart - Mobile', 375x812). Review the layout, point out the main UX bottlenecks, and generate 2 structural alternatives for comparison.",
+      "expected_output": "A thorough evaluation of the mobile cart screen assessing visual gravity, thumb zone tap targets, checkout friction, and edge states. Generates Alt A (sticky checkout bar with collapsed secondary inputs) and Alt B (express swipeable cart cards with integrated one-tap payment sheet), both positioned with 200px offsets and hypothesis captions, strictly preserving product copy and design tokens.",
+      "expectations": [
+        "Defines the screen's core job in one sentence",
+        "Identifies critical mobile ergonomics, hierarchy, and state issues in the findings table",
+        "Maintains exact content parity with original cart items, quantities, and totals",
+        "Maintains exact style parity with mobile app font sizes, colors, and corner radii",
+        "Creates Alt A as a structural rearrangement and Alt B as an interaction model rebuild",
+        "Preserves original frame untouched and positions alternatives with 200px horizontal spacing",
+        "Includes the standardized comparison report with findings, alternatives, rejected directions, and decision criterion"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Can you run screen alternatives on my Figma design?",
+      "expected_output": "The skill checks selection scope, detects that zero frames or specific targets were provided in the prompt, and prompts the user to select or specify a Figma frame or flow (up to 5 screens) rather than guessing an arbitrary frame.",
+      "expectations": [
+        "Identifies that no specific frame is selected or specified",
+        "Does not guess or hallucinate an arbitrary screen",
+        "Prompts the user to select or identify the Figma frame or flow (up to 5 screens) to analyze",
+        "Reiterates the core scope boundary of 1-5 screens"
+      ]
+    }
+  ]
+}
