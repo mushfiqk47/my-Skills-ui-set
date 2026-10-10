@@ -1,311 +1,151 @@
-# Figma Plugin & Scripter Code Patterns
+# use_figma Scripts for Screen Alternatives (Figma MCP + figma-use)
 
-This reference provides production-ready JavaScript/TypeScript code snippets for executing the programmatic canvas operations required by the **Screen Alternatives** skill.
+All scripts run inside `use_figma` with `skillNames: "figma-use"` (`resource:figma-use` if via MCP resource). Load `figma-use` skill first every time. One script per `use_figma` call. Top-level await, `return {...}`, never `figma.closePlugin()`. Colors 0-1. JSON only — never `get_screenshot` / `node.screenshot()`. Validate each step with `get_metadata` + `get_design_context` JSON diff.
+
+MCP read order before any write: `get_metadata` → `get_design_context(fileKey, nodeId)` per section → `get_variable_defs` / `search_design_system`.
 
 ---
 
-## 1. Selection & Scope Validation
+## 1. Selection & Scope Validation (read-only use_figma)
 
 Ensure exactly 1 to 5 frames are selected before executing any layout manipulation:
 
 ```javascript
-// Scope Check
+// use_figma script: scope check. skillNames: "figma-use"
+// Top-level await allowed, no IIFE wrapper.
 const selection = figma.currentPage.selection;
 
 if (selection.length === 0) {
-  figma.notify("⚠️ Please select a Figma frame or flow (up to 5 screens) to analyze.", { error: true });
-  throw new Error("Zero frames selected. Skill paused awaiting user selection.");
+  return { error: "ZERO_SELECTION", message: "Select 1-5 frames or pass Figma URL with node-id." };
 }
-
 if (selection.length > 5) {
-  figma.notify("⚠️ Too many screens selected (" + selection.length + "). Please select 5 or fewer interconnected screens.", { error: true });
-  throw new Error("Selection exceeds 5 screens. Scope must be narrowed.");
+  return { error: "TOO_MANY", count: selection.length, message: "Narrow to 5 or fewer." };
 }
-
-const originalFrames = selection.filter(node => node.type === 'FRAME' || node.type === 'COMPONENT');
-if (originalFrames.length === 0) {
-  figma.notify("⚠️ Selection must contain valid Frame or Component nodes.", { error: true });
-  throw new Error("No frame nodes found in selection.");
+const originalFrames = selection.filter(n => n.type === 'FRAME' || n.type === 'COMPONENT');
+if (!originalFrames.length) {
+  return { error: "NO_FRAMES", message: "Selection must contain Frame/Component." };
 }
+const o = originalFrames[0];
+return { ok: true, id: o.id, name: o.name, x: o.x, y: o.y, width: o.width, height: o.height, count: originalFrames.length };
 ```
 
 ---
 
-## 2. Idempotent Cleanup of Previous Generations
-
-Before creating new alternatives, scan for prior iterations linked to the original frame and cleanly remove them:
+## 2. Idempotent Cleanup of Previous Generations (separate use_figma call)
 
 ```javascript
-/**
- * Removes prior Alt A and Alt B frames and their captions associated with an original frame.
- */
-function cleanupPriorGenerations(originalFrame) {
-  const parent = originalFrame.parent || figma.currentPage;
-  const originalName = originalFrame.name;
-
-  // Patterns to clean up
-  const framePatterns = [
-    `Alt A - `,
-    `Alt B - `,
-    `Alt A (${originalName})`,
-    `Alt B (${originalName})`
-  ];
-
-  const captionPatterns = [
-    `Alt A — `,
-    `Alt B — `,
-    `Alt A (${originalName})`,
-    `Alt B (${originalName})`
-  ];
-
-  const nodesToRemove = [];
-
-  for (const child of parent.children) {
-    if (child.id === originalFrame.id) continue;
-
-    // Check frames
-    if (child.type === 'FRAME') {
-      if (framePatterns.some(pat => child.name.startsWith(pat))) {
-        nodesToRemove.push(child);
-      }
-    }
-    // Check caption text nodes
-    if (child.type === 'TEXT') {
-      if (captionPatterns.some(pat => child.characters.startsWith(pat) || child.name.startsWith(pat))) {
-        nodesToRemove.push(child);
-      }
-    }
+// use_figma script: cleanup priors. Pass originalId from Step 1.
+const orig = figma.getNodeById(originalId);
+const parent = orig?.parent ?? figma.currentPage;
+const keep = new Set([orig?.id]);
+const removed = [];
+for (const child of [...parent.children]) {
+  if (keep.has(child.id)) continue;
+  if (child.type === 'FRAME' && (child.name.startsWith('Alt A - ') || child.name.startsWith('Alt B - '))) {
+    removed.push(child.name); child.remove(); continue;
   }
-
-  for (const node of nodesToRemove) {
-    console.log(`[Cleanup] Removing prior artifact: ${node.name} (${node.id})`);
-    node.remove();
+  if (child.type === 'TEXT' && (child.name.startsWith('Caption: Alt A') || child.name.startsWith('Caption: Alt B') || child.name.startsWith('Alt A —') || child.name.startsWith('Alt B —'))) {
+    removed.push(child.name); child.remove();
   }
 }
+return { ok: true, removed };
 ```
 
 ---
 
-## 3. Positioning Calculations & Frame Duplication
+## 3. Positioning Calculations & Frame Duplication (separate use_figma calls)
 
-Clone the original frame without modifying it, and position Alt A and Alt B with exact 200px horizontal spacing:
+Clone original untouched, position Alt A/B with 200px gap. Captions 48px above.
 
 ```javascript
-/**
- * Clones and positions Alternative A and Alternative B side-by-side.
- */
-async function createAndPositionAlternatives(originalFrame, hypothesisA, hypothesisB) {
-  const GAP = 200;
-  const CAPTION_OFFSET_Y = 48; // Distance above the frame for hypothesis caption
+// use_figma script: clone + position. Inputs: originalId, hypothesisA, hypothesisB
+const GAP = 200;
+const orig = figma.getNodeById(originalId);
+const altA = orig.clone();
+altA.name = `Alt A - ${hypothesisA}`;
+altA.x = orig.x + orig.width + GAP;
+altA.y = orig.y;
+const altB = orig.clone();
+altB.name = `Alt B - ${hypothesisB}`;
+altB.x = altA.x + orig.width + GAP;
+altB.y = orig.y;
+return { ok: true, altAId: altA.id, altBId: altB.id, altAX: altA.x, altAY: altA.y, altBX: altB.x, altBY: altB.y, w: orig.width, h: orig.height };
+```
 
-  // 1. Calculate positions
-  const altAX = originalFrame.x + originalFrame.width + GAP;
-  const altAY = originalFrame.y;
+```javascript
+// use_figma script: caption. Inputs: x, y, textContent. Colors 0-1, font first.
+const fn = { family: "Inter", style: "Medium" };
+try { await figma.loadFontAsync(fn); }
+catch(e) { await figma.loadFontAsync({ family: "Inter", style: "Regular" }); }
+const t = figma.createText();
+t.fontName = fn;
+t.characters = textContent; // set after loadFontAsync
+t.fontSize = 14;
+t.fills = [{ type: 'SOLID', color: { r: 0.4, g: 0.45, b: 0.5 } }];
+t.x = x; t.y = y;
+t.name = `Caption: ${textContent}`;
+figma.currentPage.appendChild(t);
+return { ok: true, captionId: t.id };
+```
+// Call caption twice: `(altAX, altAY-48, Alt A — ...)` then `(altBX, altBY-48, Alt B — ...)`. Then `get_metadata` + `get_design_context` JSON validate.
 
-  const altBX = altAX + originalFrame.width + GAP;
-  const altBY = originalFrame.y;
+---
 
-  // 2. Clone frames (Original remains completely untouched)
-  const altAFrame = originalFrame.clone();
-  altAFrame.name = `Alt A - ${hypothesisA}`;
-  altAFrame.x = altAX;
-  altAFrame.y = altAY;
+## 4. Content Census Counter (read-only use_figma, returns data)
 
-  const altBFrame = originalFrame.clone();
-  altBFrame.name = `Alt B - ${hypothesisB}`;
-  altBFrame.x = altBX;
-  altBFrame.y = altBY;
-
-  // 3. Create captions above frames
-  await createCaption(altAX, altAY - CAPTION_OFFSET_Y, `Alt A — ${hypothesisA}`);
-  await createCaption(altBX, altBY - CAPTION_OFFSET_Y, `Alt B — ${hypothesisB}`);
-
-  return { altAFrame, altBFrame };
-}
-
-/**
- * Creates a clean caption text label above an alternative frame.
- */
-async function createCaption(x, y, textContent) {
-  const textNode = figma.createText();
-  
-  // Standard system font fallback
-  const fontName = { family: "Inter", style: "Medium" };
-  try {
-    await figma.loadFontAsync(fontName);
-    textNode.fontName = fontName;
-  } catch (e) {
-    const fallbackFont = { family: "Roboto", style: "Medium" };
-    await figma.loadFontAsync(fallbackFont);
-    textNode.fontName = fallbackFont;
-  }
-
-  textNode.characters = textContent;
-  textNode.fontSize = 14;
-  textNode.lineHeight = { value: 20, unit: 'PIXELS' };
-  textNode.fills = [{ type: 'SOLID', color: { r: 0.4, g: 0.45, b: 0.5 } }]; // Muted slate
-  textNode.x = x;
-  textNode.y = y;
-  textNode.name = `Caption: ${textContent}`;
-
-  figma.currentPage.appendChild(textNode);
-  return textNode;
-}
+```javascript
+// use_figma script: census. Input: frameId. Use to enforce content parity.
+const frame = figma.getNodeById(frameId);
+const census = { buttons:0, textNodes:0, images:0, inputs:0, vectors:0, frames:0, total:0, snippets:[] };
+(function walk(n){
+  census.total++;
+  if (n.type==='TEXT'){ census.textNodes++; const s=(n.characters||'').trim(); if(s && census.snippets.length<25) census.snippets.push(s.slice(0,120)); }
+  else if (n.type==='VECTOR') census.vectors++;
+  else if (n.type==='FRAME'||n.type==='GROUP'||n.type==='COMPONENT'||n.type==='INSTANCE'){ census.frames++; const nm=(n.name||'').toLowerCase(); if(nm.includes('btn')||nm.includes('button')) census.buttons++; if(nm.includes('input')||nm.includes('field')||nm.includes('search')) census.inputs++; }
+  else if (n.type==='RECTANGLE' && n.fills?.some(f=>f.type==='IMAGE')) census.images++;
+  if ('children' in n) for (const c of n.children) walk(c);
+})(frame);
+return { ok:true, census };
 ```
 
 ---
 
-## 4. Content Census Counter
-
-Extract an exact content census from the original frame to enforce Content Parity:
+## 5. Technical Auto-Layout Manipulation Rules (figma-use gotchas)
 
 ```javascript
-/**
- * Takes an exact census of nodes inside a frame to verify Content Parity.
- */
-function takeContentCensus(frame) {
-  const census = {
-    buttons: 0,
-    textNodes: 0,
-    images: 0,
-    inputs: 0,
-    vectors: 0,
-    frames: 0,
-    totalNodes: 0,
-    textSnippets: []
-  };
-
-  function traverse(node) {
-    census.totalNodes++;
-
-    if (node.type === 'TEXT') {
-      census.textNodes++;
-      const txt = node.characters.trim();
-      if (txt.length > 0 && census.textSnippets.length < 25) {
-        census.textSnippets.push(txt);
-      }
-    } else if (node.type === 'VECTOR') {
-      census.vectors++;
-    } else if (node.type === 'FRAME' || node.type === 'GROUP') {
-      census.frames++;
-      // Check if button-like
-      if (node.name.toLowerCase().includes('btn') || node.name.toLowerCase().includes('button')) {
-        census.buttons++;
-      }
-      // Check if input-like
-      if (node.name.toLowerCase().includes('input') || node.name.toLowerCase().includes('field') || node.name.toLowerCase().includes('search')) {
-        census.inputs++;
-      }
-    } else if (node.type === 'RECTANGLE' && node.fills && node.fills.some(f => f.type === 'IMAGE')) {
-      census.images++;
-    }
-
-    if ('children' in node) {
-      for (const child of node.children) {
-        traverse(child);
-      }
-    }
-  }
-
-  traverse(frame);
-  return census;
-}
+// use_figma script pattern: safe auto-layout. RULE: layoutMode first, append before HUG/FILL, resize before HUG.
+frame.layoutMode = 'VERTICAL';
+frame.itemSpacing = 16;
+frame.paddingTop = frame.paddingBottom = frame.paddingLeft = frame.paddingRight = 16;
+frame.primaryAxisAlignItems = 'MIN';
+frame.counterAxisAlignItems = 'MIN';
+frame.appendChild(child); // first
+child.layoutSizingHorizontal = 'FILL'; // after append
+child.layoutSizingVertical = 'HUG';
+// For HUG container: frame.resize(w,h) before setting primaryAxisSizingMode='HUG'
+// Concentric radius: R_outer = R_inner + Padding
+// Batch props: node.set({ ... }); Search: figma.currentPage.query('.btn-primary')
+// Page switch only: await figma.setCurrentPageAsync(page)
+return { ok: true };
 ```
 
 ---
 
-## 5. Technical Auto-Layout Manipulation Rules
-
-When modifying layout structures programmatically, observe these rules to prevent layout collapse:
+## 6. Pre-Completion Sanity Audit (read-only use_figma + MCP JSON)
 
 ```javascript
-/**
- * Safe auto-layout container setup
- */
-function setupAutoLayoutContainer(frame, options = {}) {
-  // RULE 1: Set layoutMode first before any sizing modes
-  frame.layoutMode = options.direction || 'VERTICAL'; // 'VERTICAL' | 'HORIZONTAL'
-
-  // Spacing & Padding
-  frame.itemSpacing = options.itemSpacing !== undefined ? options.itemSpacing : 16;
-  frame.paddingTop = options.paddingTop !== undefined ? options.paddingTop : 16;
-  frame.paddingBottom = options.paddingBottom !== undefined ? options.paddingBottom : 16;
-  frame.paddingLeft = options.paddingLeft !== undefined ? options.paddingLeft : 16;
-  frame.paddingRight = options.paddingRight !== undefined ? options.paddingRight : 16;
-
-  // Alignment
-  frame.primaryAxisAlignItems = options.primaryAlign || 'MIN';
-  frame.counterAxisAlignItems = options.counterAlign || 'MIN';
-
-  // Sizing: Modern shorthand properties
-  // Note: Only set after children have been appended if using 'HUG'
-  if (options.sizingHorizontal) {
-    frame.layoutSizingHorizontal = options.sizingHorizontal; // 'FIXED' | 'HUG' | 'FILL'
-  }
-  if (options.sizingVertical) {
-    frame.layoutSizingVertical = options.sizingVertical; // 'FIXED' | 'HUG' | 'FILL'
-  }
-}
-
-/**
- * Concentric Border Radius Helper
- * R_outer = R_inner + Padding
- */
-function calculateConcentricRadius(innerRadius, padding) {
-  return innerRadius + padding;
-}
+// use_figma script: audit. Inputs: originalId, altId.
+const orig = figma.getNodeById(originalId);
+const alt = figma.getNodeById(altId);
+const issues = [];
+if (alt.height / orig.height < 0.6 || alt.height / orig.height > 1.4)
+  issues.push(`height drift orig=${orig.height} alt=${alt.height}`);
+if (!alt.children?.length) issues.push("zero children");
+(function chk(n){
+  if (n.type==='TEXT' && n.width===0) issues.push(`0px text "${(n.characters||'').slice(0,15)}"`);
+  if ((n.type==='FRAME'||n.type==='COMPONENT') && n.visible && n.height===0 && n.layoutMode!=='NONE') issues.push(`collapsed "${n.name}"`);
+  if ('children' in n) for (const c of n.children) chk(c);
+})(alt);
+return { ok: issues.length===0, issues };
 ```
-
----
-
-## 6. Pre-Completion Sanity Audit
-
-Execute automated checks before completing the skill:
-
-```javascript
-/**
- * Audits generated alternative frames for zero-width text, collapsed heights, or missing nodes.
- */
-function verifyAlternativeFrame(originalFrame, altFrame) {
-  const issues = [];
-
-  // Check 1: Dimensions parity
-  const heightRatio = altFrame.height / originalFrame.height;
-  if (heightRatio < 0.6 || heightRatio > 1.4) {
-    issues.push(`Frame height altered significantly: Original=${originalFrame.height}px, Alt=${altFrame.height}px`);
-  }
-
-  // Check 2: Contains children
-  if (!altFrame.children || altFrame.children.length === 0) {
-    issues.push("Alternative frame contains zero children!");
-  }
-
-  // Check 3: Zero-width text and collapsed containers
-  function checkNode(node) {
-    if (node.type === 'TEXT') {
-      if (node.width === 0) {
-        issues.push(`Text node "${node.characters.substring(0, 15)}..." has 0px width.`);
-      }
-    }
-    if (node.type === 'FRAME' && node.visible) {
-      if (node.height === 0 && node.layoutMode !== 'NONE') {
-        issues.push(`Frame container "${node.name}" has collapsed to 0px height.`);
-      }
-    }
-    if ('children' in node) {
-      for (const child of node.children) {
-        checkNode(child);
-      }
-    }
-  }
-
-  checkNode(altFrame);
-
-  if (issues.length > 0) {
-    console.error(`Verification warnings for ${altFrame.name}:`, issues);
-    return { passed: false, issues };
-  }
-
-  return { passed: true, issues: [] };
-}
-```
+// Then run MCP `get_metadata` + `get_design_context` JSON diff on altId to confirm structure. Fix via new use_figma call — prior failed script atomic, no partial state.
